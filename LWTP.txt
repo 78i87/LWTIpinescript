@@ -1,0 +1,83 @@
+//@version=5
+indicator("LWTI-pro", shorttitle="LWTIP", overlay=false)
+
+greencolor = color.new(#2DD204, 0)
+redcolor = color.new(#D2042D, 0)
+
+// Function to select the smoothing method
+variant(type, src, len) =>
+    sig = 0.0
+    if type == "SMA"
+        sig := ta.sma(src, len) 
+    else if type == "EMA"
+        sig := ta.ema(src, len) 
+    else if type == "WMA"
+        sig := ta.wma(src, len)   
+    else if type == "RMA"
+        sig := ta.rma(src, len)  
+    sig
+
+// Inputs for settings
+per = input.int(38, "Period", group = "Basic Settings")
+smthit = input.bool(true, "Smooth LWPI?", group = "Basic Settings")
+type = input.string("SMA", "Smoothing Type", options = ["EMA", "WMA", "RMA", "SMA"], group = "BasicR Settings")
+smthper = input.int(20, "Smoothing Period", group = "Basic Settings")
+colorbars = input.bool(false, "Color bars?", group = "UI Options")
+showsignals = input.bool(false, "Show signals?", group = "UI Options")
+showRSI = input.bool(true, "Show RSI and Bands", group = "RSI Settings")
+
+// LWTI calculation
+ma = ta.sma(close - nz(close[per]), per)
+atr = ta.atr(per)
+out = ma / atr * 50 + 50
+out := smthit ? variant(type, out, smthper) : out
+
+// Coloring and plotting
+colorout = out > 50 ? greencolor : redcolor
+plot(out, "LWTI", colorout, 2)
+barcolor(colorbars ? colorout : na)
+
+// Middle line and signals
+middle = 50
+plot(middle, "Middle", color.gray, 1)
+
+goLong = ta.crossover(out, middle)
+goShort = ta.crossunder(out, middle)
+plotshape(showsignals and goLong, title="Long", location=location.belowbar, color=greencolor, style=shape.triangleup, size=size.small, text="L")
+plotshape(showsignals and goShort, title="Short", location=location.abovebar, color=redcolor, style=shape.triangledown, size=size.small, text="S")
+
+// Alerts
+alertcondition(goLong, "Long", "LWTI-pro: Long Signal at {{close}}")
+alertcondition(goShort, "Short", "LWTI-pro: Short Signal at {{close}}")
+
+slopePeriod = input.int(3, title="Slope Period", minval=1)
+// First Derivative Calculation (k)
+firstDerivative = (out[1] - out[1 + slopePeriod]) / slopePeriod
+normalizedFirstDerivative = math.sign(firstDerivative) * math.min(math.abs(firstDerivative), 1)
+
+// Second Derivative Calculation (k')
+secondDerivative = (firstDerivative[1] - firstDerivative[1 + slopePeriod]) / slopePeriod
+normalizedSecondDerivative = math.sign(secondDerivative) * math.min(math.abs(secondDerivative), 1)
+
+// Display Gradient for Second Derivative (k')
+var label secondDerivativeLabel = na
+if (na(secondDerivativeLabel))
+    secondDerivativeLabel := label.new(bar_index, high[1] - (atr * 30), "k' = " + str.tostring(normalizedSecondDerivative), color=color.rgb(0, 0, 0, 100), textcolor=color.rgb(0, 0, 0))
+else
+    label.set_text(secondDerivativeLabel, "k' = " + str.tostring(normalizedSecondDerivative))
+    label.set_x(secondDerivativeLabel, bar_index)
+    // Continue adjusting 'y' to ensure 'k'' label is consistently lower
+    label.set_y(secondDerivativeLabel, high[1] - (atr * 30))
+
+// RSI Calculation and Enhancement...
+rsiPeriod = 14
+rsiValue = ta.rsi(close, rsiPeriod)
+enhancementFactor = 2
+enhancedRsiValue = (rsiValue - 50) * enhancementFactor + 50 // Assuming the enhanced calculation
+
+// Plotting Enhanced RSI with Conditional Visibility
+plot(showRSI ? enhancedRsiValue : na, "Enhanced RSI", color=showRSI ? color.rgb(117, 33, 243) : na, linewidth=2)
+
+// Adjusting Upper and Lower Bands for Enhanced RSI with Conditional Visibility
+hline(showRSI ? 100 : na, "Upper Band", color=color.red, linewidth=1, linestyle=hline.style_dotted)
+hline(showRSI ? 0 : na, "Lower Band", color=color.green, linewidth=1, linestyle=hline.style_dotted)
